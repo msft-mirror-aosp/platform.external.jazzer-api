@@ -1,6 +1,6 @@
 name: "jazzer-api"
 description:
-    "jazzer is an opensource fuzzing engine for java code. This API provides "
+    "Jazzer is an open source fuzzing engine for Java code. This API provides "
     "useful functions to write an effective fuzz target."
 
 third_party {
