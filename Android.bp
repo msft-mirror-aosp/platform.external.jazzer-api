@@ -53,3 +53,11 @@ java_library {
     ],
     visibility: ["//visibility:public"],
 }
+
+java_binary {
+  name: "jazzer_setup",
+  host_supported: true,
+  srcs: [
+    "JazzerSetup.java",
+  ],
+}
