@@ -31,7 +31,13 @@ object ExpressionLanguageInjection {
      * Try to call the default constructor of the honeypot class.
      */
     private const val EXPRESSION_LANGUAGE_ATTACK =
-        "\${\"\".getClass().forName(\"$HONEYPOT_CLASS_NAME\").newInstance()}"
+        "\${Byte.class.forName(\"$HONEYPOT_CLASS_NAME\").getMethod(\"el\").invoke(null)}"
+
+    init {
+        require(EXPRESSION_LANGUAGE_ATTACK.length <= 64) {
+            "Expression language exploit must fit in a table of recent compares entry (64 bytes)"
+        }
+    }
 
     @MethodHooks(
         MethodHook(
@@ -60,8 +66,10 @@ object ExpressionLanguageInjection {
         method: MethodHandle?,
         thisObject: Any?,
         arguments: Array<Any>,
-        hookId: Int
+        hookId: Int,
     ) {
+        // The overloads taking a second string argument have either three or four arguments
+        if (arguments.size < 3) { return }
         val expression = arguments[1] as? String ?: return
         Jazzer.guideTowardsContainment(expression, EXPRESSION_LANGUAGE_ATTACK, hookId)
     }
@@ -76,15 +84,16 @@ object ExpressionLanguageInjection {
     @MethodHook(
         type = HookType.BEFORE,
         targetClassName = "javax.validation.ConstraintValidatorContext",
-        targetMethod = "buildConstraintViolationWithTemplate"
+        targetMethod = "buildConstraintViolationWithTemplate",
     )
     @JvmStatic
     fun hookBuildConstraintViolationWithTemplate(
         method: MethodHandle?,
         thisObject: Any?,
         arguments: Array<Any>,
-        hookId: Int
+        hookId: Int,
     ) {
+        if (arguments.size != 1) { return }
         val message = arguments[0] as String
         Jazzer.guideTowardsContainment(message, EXPRESSION_LANGUAGE_ATTACK, hookId)
     }
