@@ -39,10 +39,11 @@ object OsCommandInjection {
         type = HookType.BEFORE,
         targetClassName = "java.lang.ProcessImpl",
         targetMethod = "start",
-        additionalClassesToHook = ["java.lang.ProcessBuilder"]
+        additionalClassesToHook = ["java.lang.ProcessBuilder"],
     )
     @JvmStatic
     fun processImplStartHook(method: MethodHandle?, alwaysNull: Any?, args: Array<Any?>, hookId: Int) {
+        if (args.isEmpty()) { return }
         // Calling ProcessBuilder already checks if command array is empty
         @Suppress("UNCHECKED_CAST")
         (args[0] as? Array<String>)?.first().let { cmd ->
@@ -50,8 +51,8 @@ object OsCommandInjection {
                 Jazzer.reportFindingFromHook(
                     FuzzerSecurityIssueCritical(
                         """OS Command Injection
-Executing OS commands with attacker-controlled data can lead to remote code execution."""
-                    )
+Executing OS commands with attacker-controlled data can lead to remote code execution.""",
+                    ),
                 )
             } else {
                 Jazzer.guideTowardsEquality(cmd, COMMAND, hookId)

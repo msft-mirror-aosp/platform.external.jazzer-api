@@ -6,13 +6,13 @@ description:
 third_party {
   url {
     type: HOMEPAGE
-    value: "https://github.com/CodeIntelligenceTesting/jazzer"
+    value: "https://www.code-intelligence.com/"
   }
   url {
     type: GIT
     value: "https://github.com/CodeIntelligenceTesting/jazzer"
   }
-  version: "327677ad48bdd3e87794a1fe3c2becc13288e4b7"
-  last_upgrade_date { year: 2022 month: 9 day: 15 }
+  version: "30decf81a147c66fa5a098072c38ab6924ba0aa6"
+  last_upgrade_date { year: 2023 month: 6 day: 14 }
   license_type: NOTICE
 }
