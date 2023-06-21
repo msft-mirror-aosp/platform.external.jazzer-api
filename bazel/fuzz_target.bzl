@@ -15,59 +15,85 @@
 def java_fuzz_target_test(
         name,
         target_class = None,
+        target_method = None,
         deps = [],
-        hook_classes = [],
+        runtime_deps = [],
+        hook_jar = None,
         data = [],
-        sanitizer = None,
-        visibility = None,
+        launcher_variant = "java",
         tags = [],
         fuzzer_args = [],
         srcs = [],
         size = None,
         timeout = None,
         env = None,
+        env_inherit = None,
         verify_crash_input = True,
         verify_crash_reproducer = True,
-        expect_crash = True,
-        # Default is that the reproducer does not throw any exception.
-        expected_findings = [],
+        # Superset of the findings the fuzzer is expected to find. Since fuzzing runs are not
+        # deterministic across OSes, pinpointing the exact set of findings is difficult.
+        allowed_findings = [],
+        # By default, expect a crash iff allowed_findings isn't empty.
+        expect_crash = None,
         **kwargs):
-    target_name = name + "_target"
-    deploy_manifest_lines = []
     if target_class:
-        deploy_manifest_lines.append("Jazzer-Fuzz-Target-Class: %s" % target_class)
-    if hook_classes:
-        deploy_manifest_lines.append("Jazzer-Hook-Classes: %s" % ":".join(hook_classes))
+        fuzzer_args = fuzzer_args + ["--target_class=" + target_class]
+    if target_method:
+        fuzzer_args = fuzzer_args + ["--target_method=" + target_method]
+    if expect_crash == None:
+        expect_crash = len(allowed_findings) != 0
+
+    target_name = name + "_target"
+    target_deploy_jar = target_name + "_deploy.jar"
 
     # Deps can only be specified on java_binary targets with sources, which
     # excludes e.g. Kotlin libraries wrapped into java_binary via runtime_deps.
-    target_deps = deps + ["//agent:jazzer_api_compile_only"] if srcs else []
+    deps = deps + ["//deploy:jazzer-api"] if srcs else []
     native.java_binary(
         name = target_name,
         srcs = srcs,
-        visibility = ["//visibility:private"],
         create_executable = False,
-        deploy_manifest_lines = deploy_manifest_lines,
-        deps = target_deps,
+        visibility = ["//visibility:private"],
+        deps = deps,
+        runtime_deps = runtime_deps,
         testonly = True,
+        tags = tags,
         **kwargs
     )
 
-    if sanitizer == None:
-        driver = "//driver:jazzer_driver"
-    elif sanitizer == "address":
-        driver = "//driver:jazzer_driver_asan"
-    elif sanitizer == "undefined":
-        driver = "//driver:jazzer_driver_ubsan"
+    if launcher_variant == "java":
+        # With the Java driver, we expect fuzz targets to depend on Jazzer
+        # rather than have the launcher start a JVM with Jazzer on the class
+        # path.
+        native.java_import(
+            name = target_name + "_import",
+            jars = [target_deploy_jar],
+            testonly = True,
+            tags = tags,
+        )
+        target_with_driver_name = target_name + "_driver"
+        native.java_binary(
+            name = target_with_driver_name,
+            runtime_deps = [
+                target_name + "_import",
+                "//src/main/java/com/code_intelligence/jazzer:jazzer_import",
+            ],
+            main_class = "com.code_intelligence.jazzer.Jazzer",
+            testonly = True,
+            tags = tags,
+        )
+
+    if launcher_variant == "native":
+        driver = "//launcher:jazzer"
+    elif launcher_variant == "java":
+        driver = target_with_driver_name
     else:
-        fail("Invalid sanitizer: " + sanitizer)
+        fail("Invalid launcher variant: " + launcher_variant)
 
     native.java_test(
         name = name,
         runtime_deps = [
             "//bazel/tools/java:fuzz_target_test_wrapper",
-            "//agent:jazzer_api_deploy.jar",
-            ":%s_deploy.jar" % target_name,
         ],
         jvm_flags = [
             # Use the same memory settings for reproducers as those suggested by Jazzer when
@@ -78,26 +104,27 @@ def java_fuzz_target_test(
         ],
         size = size or "enormous",
         timeout = timeout or "moderate",
+        # args are shell tokenized and thus quotes are required in the case where arguments
+        # are empty.
         args = [
-            "$(rootpath %s)" % driver,
-            "$(rootpath //agent:jazzer_api_deploy.jar)",
-            "$(rootpath :%s_deploy.jar)" % target_name,
+            "$(rlocationpath %s)" % driver,
+            "$(rlocationpath //deploy:jazzer-api)",
+            "$(rlocationpath %s)" % target_deploy_jar,
+            "$(rlocationpath %s)" % hook_jar if hook_jar else "''",
             str(verify_crash_input),
             str(verify_crash_reproducer),
             str(expect_crash),
-            # args are shell tokenized and thus quotes are required in the case where
-            # expected_findings is empty.
-            "'" + ",".join(expected_findings) + "'",
+            str(launcher_variant == "java"),
+            "'" + ",".join(allowed_findings) + "'",
         ] + fuzzer_args,
         data = [
-            ":%s_deploy.jar" % target_name,
-            "//agent:jazzer_agent_deploy",
-            "//agent:jazzer_api_deploy.jar",
+            target_deploy_jar,
+            "//deploy:jazzer-api",
             driver,
-        ] + data,
+        ] + data + ([hook_jar] if hook_jar else []),
         env = env,
+        env_inherit = env_inherit,
         main_class = "com.code_intelligence.jazzer.tools.FuzzTargetTestWrapper",
         use_testrunner = False,
         tags = tags,
-        visibility = visibility,
     )
