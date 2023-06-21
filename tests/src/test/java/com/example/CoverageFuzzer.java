@@ -18,10 +18,6 @@ package com.example;
 
 import com.code_intelligence.jazzer.api.FuzzedDataProvider;
 import com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow;
-import com.code_intelligence.jazzer.third_party.org.jacoco.core.data.ExecutionData;
-import com.code_intelligence.jazzer.third_party.org.jacoco.core.data.ExecutionDataReader;
-import com.code_intelligence.jazzer.third_party.org.jacoco.core.data.ExecutionDataStore;
-import com.code_intelligence.jazzer.third_party.org.jacoco.core.data.SessionInfoStore;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -30,6 +26,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.jacoco.core.data.ExecutionData;
+import org.jacoco.core.data.ExecutionDataReader;
+import org.jacoco.core.data.ExecutionDataStore;
+import org.jacoco.core.data.SessionInfoStore;
 
 /**
  * Test of coverage report and dump.
@@ -171,7 +171,7 @@ public final class CoverageFuzzer {
     assertEquals(7, countHits(coverageFuzzerCoverage.getProbes()));
 
     assertEquals("com/example/CoverageFuzzer$ClassToCover", classToCoverCoverage.getName());
-    assertEquals(11, countHits(classToCoverCoverage.getProbes()));
+    assertEquals(10, countHits(classToCoverCoverage.getProbes()));
   }
 
   private static int countHits(boolean[] probes) {

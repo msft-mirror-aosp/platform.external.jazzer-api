@@ -1,28 +1,30 @@
 load("@fmeum_rules_jni//jni:defs.bzl", "java_jni_library")
-load("//bazel:compat.bzl", "SKIP_ON_MACOS", "SKIP_ON_WINDOWS")
+load("@io_bazel_rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library")
+load("//bazel:compat.bzl", "LINUX_ONLY", "SKIP_ON_MACOS", "SKIP_ON_WINDOWS")
 load("//bazel:fuzz_target.bzl", "java_fuzz_target_test")
+load("//bazel:kotlin.bzl", "ktlint")
 
 java_fuzz_target_test(
     name = "LongStringFuzzer",
     srcs = [
         "src/test/java/com/example/LongStringFuzzer.java",
     ],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
     data = ["src/test/java/com/example/LongStringFuzzerInput"],
-    expected_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
+    # Additionally verify that Jazzer-Fuzz-Target-Class is picked up if --target_class isn't set.
+    deploy_manifest_lines = ["Jazzer-Fuzz-Target-Class: com.example.LongStringFuzzer"],
     fuzzer_args = [
-        "$(rootpath src/test/java/com/example/LongStringFuzzerInput)",
+        "$(rlocationpath src/test/java/com/example/LongStringFuzzerInput)",
     ],
-    target_class = "com.example.LongStringFuzzer",
+    launcher_variant = "native",
     verify_crash_input = False,
 )
 
 java_fuzz_target_test(
     name = "JpegImageParserAutofuzz",
-    expected_findings = ["java.lang.NegativeArraySizeException"],
+    allowed_findings = ["java.lang.NegativeArraySizeException"],
     fuzzer_args = [
         "--autofuzz=org.apache.commons.imaging.formats.jpeg.JpegImageParser::getBufferedImage",
-        # Exit after the first finding for testing purposes.
-        "--keep_going=1",
         "--autofuzz_ignore=java.lang.NullPointerException",
     ],
     runtime_deps = [
@@ -30,37 +32,34 @@ java_fuzz_target_test(
     ],
 )
 
+java_binary(
+    name = "HookDependenciesFuzzerHooks",
+    srcs = ["src/test/java/com/example/HookDependenciesFuzzerHooks.java"],
+    create_executable = False,
+    deploy_manifest_lines = ["Jazzer-Hook-Classes: com.example.HookDependenciesFuzzerHooks"],
+    deps = ["//src/main/java/com/code_intelligence/jazzer/api:hooks"],
+)
+
 java_fuzz_target_test(
     name = "HookDependenciesFuzzer",
     srcs = ["src/test/java/com/example/HookDependenciesFuzzer.java"],
+    allowed_findings = [
+        "com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow",
+    ],
     env = {"JAVA_OPTS": "-Xverify:all"},
-    hook_classes = ["com.example.HookDependenciesFuzzer"],
+    hook_jar = "HookDependenciesFuzzerHooks_deploy.jar",
     target_class = "com.example.HookDependenciesFuzzer",
+    verify_crash_reproducer = False,
 )
 
 java_fuzz_target_test(
     name = "AutofuzzWithoutCoverage",
-    expected_findings = ["java.lang.NullPointerException"],
+    allowed_findings = ["java.lang.NullPointerException"],
     fuzzer_args = [
         # Autofuzz a method that triggers no coverage instrumentation (the Java standard library is
         # excluded by default).
         "--autofuzz=java.util.regex.Pattern::compile",
-        "--keep_going=1",
     ],
-)
-
-java_fuzz_target_test(
-    name = "AutofuzzHookDependencies",
-    # The reproducer does not include the hook on OOM and thus throws a regular error.
-    expected_findings = ["java.lang.OutOfMemoryError"],
-    fuzzer_args = [
-        "--instrumentation_includes=java.util.regex.**",
-        "--autofuzz=java.util.regex.Pattern::compile",
-        "--autofuzz_ignore=java.lang.Exception",
-        "--keep_going=1",
-    ],
-    # FIXME(fabian): Regularly times out on Windows with 0 exec/s for minutes.
-    target_compatible_with = SKIP_ON_WINDOWS,
 )
 
 java_fuzz_target_test(
@@ -69,10 +68,10 @@ java_fuzz_target_test(
     srcs = [
         "src/test/java/com/example/ForkModeFuzzer.java",
     ],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
     env = {
         "JAVA_OPTS": "-Dfoo=not_foo -Djava_opts=1",
     },
-    expected_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
     fuzzer_args = [
         "-fork=2",
         "--additional_jvm_args=-Dbaz=baz",
@@ -82,6 +81,7 @@ java_fuzz_target_test(
         "@platforms//os:windows": ["--jvm_args=-Dfoo=foo;-Dbar=b\\\\;ar"],
         "//conditions:default": ["--jvm_args=-Dfoo=foo:-Dbar=b\\\\:ar"],
     }),
+    launcher_variant = "native",
     # Consumes more resources than can be expressed via the size attribute.
     tags = ["exclusive-if-local"],
     target_class = "com.example.ForkModeFuzzer",
@@ -94,6 +94,7 @@ java_fuzz_target_test(
     srcs = [
         "src/test/java/com/example/CoverageFuzzer.java",
     ],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
     env = {
         "COVERAGE_REPORT_FILE": "coverage.txt",
         "COVERAGE_DUMP_FILE": "coverage.exec",
@@ -108,7 +109,7 @@ java_fuzz_target_test(
     verify_crash_input = False,
     verify_crash_reproducer = False,
     deps = [
-        "@jazzer_jacoco//:jacoco_internal",
+        "@maven//:org_jacoco_org_jacoco_core",
     ],
 )
 
@@ -116,16 +117,15 @@ java_library(
     name = "autofuzz_inner_class_target",
     srcs = ["src/test/java/com/example/AutofuzzInnerClassTarget.java"],
     deps = [
-        "//agent:jazzer_api_compile_only",
+        "//deploy:jazzer-api",
     ],
 )
 
 java_fuzz_target_test(
     name = "AutofuzzInnerClassFuzzer",
-    expected_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
     fuzzer_args = [
         "--autofuzz=com.example.AutofuzzInnerClassTarget.Middle.Inner::test",
-        "--keep_going=1",
     ],
     runtime_deps = [
         ":autofuzz_inner_class_target",
@@ -135,11 +135,13 @@ java_fuzz_target_test(
 # Regression test for https://github.com/CodeIntelligenceTesting/jazzer/issues/405.
 java_fuzz_target_test(
     name = "MemoryLeakFuzzer",
-    timeout = "short",
+    timeout = "moderate",
     srcs = ["src/test/java/com/example/MemoryLeakFuzzer.java"],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
     env = {
         "JAVA_OPTS": "-Xmx800m",
     },
+    # --keep_going ignores the only finding.
     expect_crash = False,
     fuzzer_args = [
         # Before the bug was fixed, either the GC overhead limit or the overall heap limit was
@@ -161,7 +163,7 @@ JAZZER_API_TEST_CASES = {
     java_fuzz_target_test(
         name = "JazzerApiFuzzer_" + case,
         srcs = ["src/test/java/com/example/JazzerApiFuzzer.java"],
-        expected_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
+        allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
         fuzzer_args = args,
         target_class = "com.example.JazzerApiFuzzer",
     )
@@ -172,7 +174,6 @@ java_fuzz_target_test(
     name = "DisabledHooksFuzzer",
     timeout = "short",
     srcs = ["src/test/java/com/example/DisabledHooksFuzzer.java"],
-    expect_crash = False,
     fuzzer_args = [
         "-runs=0",
         "--custom_hooks=com.example.DisabledHook",
@@ -185,12 +186,11 @@ java_fuzz_target_test(
 
 java_fuzz_target_test(
     name = "BytesMemoryLeakFuzzer",
-    timeout = "short",
+    timeout = "moderate",
     srcs = ["src/test/java/com/example/BytesMemoryLeakFuzzer.java"],
     env = {
         "JAVA_OPTS": "-Xmx200m",
     },
-    expect_crash = False,
     fuzzer_args = [
         # Before the bug was fixed, either the GC overhead limit or the overall heap limit was
         # reached by this target in this number of runs.
@@ -205,7 +205,6 @@ java_fuzz_target_test(
     name = "NoCoverageFuzzer",
     timeout = "short",
     srcs = ["src/test/java/com/example/NoCoverageFuzzer.java"],
-    expect_crash = False,
     fuzzer_args = [
         "-runs=10",
         "--instrumentation_excludes=**",
@@ -217,7 +216,6 @@ java_fuzz_target_test(
     name = "SeedFuzzer",
     timeout = "short",
     srcs = ["src/test/java/com/example/SeedFuzzer.java"],
-    expect_crash = False,
     fuzzer_args = [
         "-runs=0",
         "-seed=1234567",
@@ -232,7 +230,6 @@ java_fuzz_target_test(
     env = {
         "JAZZER_NO_EXPLICIT_SEED": "1",
     },
-    expect_crash = False,
     fuzzer_args = [
         "-runs=0",
     ],
@@ -244,16 +241,306 @@ java_jni_library(
     srcs = ["src/test/java/com/example/NativeValueProfileFuzzer.java"],
     native_libs = ["//tests/src/test/native/com/example:native_value_profile_fuzzer"],
     visibility = ["//tests/src/test/native/com/example:__pkg__"],
-    deps = ["//agent:jazzer_api_compile_only"],
+    deps = ["//deploy:jazzer-api"],
 )
 
 java_fuzz_target_test(
     name = "NativeValueProfileFuzzer",
-    expected_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
-    fuzzer_args = ["-use_value_profile=1"],
-    sanitizer = "address",
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueLow"],
+    fuzzer_args = [
+        "-use_value_profile=1",
+        "--native",
+    ],
     target_class = "com.example.NativeValueProfileFuzzer",
     target_compatible_with = SKIP_ON_WINDOWS,
     verify_crash_reproducer = False,
     runtime_deps = [":native_value_profile_fuzzer"],
 )
+
+java_binary(
+    name = "JUnitAgentConfigurationFuzzTest",
+    srcs = ["src/test/java/com/example/JUnitAgentConfigurationFuzzTest.java"],
+    main_class = "com.code_intelligence.jazzer.Jazzer",
+    runtime_deps = [
+        "//deploy:jazzer",
+        "@maven//:org_junit_jupiter_junit_jupiter_engine",
+    ],
+    deps = [
+        "//deploy:jazzer-api",
+        "//deploy:jazzer-junit",
+        "@maven//:org_junit_jupiter_junit_jupiter_api",
+    ],
+)
+
+sh_test(
+    name = "junit_agent_configuration_test",
+    srcs = ["src/test/shell/junit_agent_configuration_test.sh"],
+    args = ["$(rlocationpath :JUnitAgentConfigurationFuzzTest)"],
+    data = [":JUnitAgentConfigurationFuzzTest"],
+    deps = ["@bazel_tools//tools/bash/runfiles"],
+)
+
+java_fuzz_target_test(
+    name = "JUnitAssertFuzzer",
+    timeout = "short",
+    srcs = ["src/test/java/com/example/JUnitAssertFuzzer.java"],
+    allowed_findings = ["org.opentest4j.AssertionFailedError"],
+    target_class = "com.example.JUnitAssertFuzzer",
+    deps = ["@maven//:org_junit_jupiter_junit_jupiter_api"],
+)
+
+java_library(
+    name = "autofuzz_ignore_target",
+    srcs = ["src/test/java/com/example/AutofuzzIgnoreTarget.java"],
+)
+
+java_fuzz_target_test(
+    name = "AutofuzzIgnoreFuzzer",
+    allowed_findings = ["java.lang.RuntimeException"],
+    fuzzer_args = [
+        "--autofuzz=com.example.AutofuzzIgnoreTarget::doStuff",
+        "--autofuzz_ignore=java.lang.NullPointerException",
+        "--ignore=bdde2af8735993f3,0123456789ABCDEF",
+    ],
+    runtime_deps = [
+        ":autofuzz_ignore_target",
+    ],
+)
+
+java_binary(
+    name = "CrashResistantCoverageTarget",
+    srcs = ["src/test/java/com/example/CrashResistantCoverageTarget.java"],
+)
+
+sh_test(
+    name = "crash_resistant_coverage_test",
+    srcs = ["src/test/shell/crash_resistant_coverage_test.sh"],
+    data = [
+        "src/test/data/crash_resistant_coverage_test/crashing_seeds",
+        "src/test/data/crash_resistant_coverage_test/new_coverage_seeds/new_coverage",
+        ":CrashResistantCoverageTarget_deploy.jar",
+        "//launcher:jazzer",
+        "@bazel_tools//tools/bash/runfiles",
+        "@jacocoagent//file:jacocoagent.jar",
+        "@jacococli//file:jacococli.jar",
+    ],
+    target_compatible_with = LINUX_ONLY,
+)
+
+java_fuzz_target_test(
+    name = "JavaDriver",
+    allowed_findings = ["java.lang.NullPointerException"],
+    fuzzer_args = [
+        "--autofuzz=java.util.regex.Pattern::compile",
+    ],
+)
+
+java_fuzz_target_test(
+    name = "JavaDriverWithFork",
+    allowed_findings = ["java.lang.NullPointerException"],
+    fuzzer_args = [
+        "--autofuzz=java.util.regex.Pattern::compile",
+        "-fork=2",
+    ],
+    # -fork is broken on macOS for unknown reasons.
+    target_compatible_with = SKIP_ON_MACOS,
+)
+
+kt_jvm_library(
+    name = "kotlin_vararg",
+    srcs = ["src/test/java/com/example/KotlinVararg.kt"],
+)
+
+java_fuzz_target_test(
+    name = "KotlinVarargFuzzer",
+    srcs = ["src/test/java/com/example/KotlinVarargFuzzer.java"],
+    allowed_findings = ["java.io.IOException"],
+    target_class = "com.example.KotlinVarargFuzzer",
+    deps = [":kotlin_vararg"],
+)
+
+java_fuzz_target_test(
+    name = "TimeoutFuzzer",
+    timeout = "short",
+    srcs = ["src/test/java/com/example/TimeoutFuzzer.java"],
+    allowed_findings = ["timeout"],
+    fuzzer_args = [
+        "-timeout=1",
+    ],
+    target_class = "com.example.TimeoutFuzzer",
+    verify_crash_reproducer = False,
+)
+
+java_library(
+    name = "autofuzz_crashing_setter_target",
+    srcs = ["src/test/java/com/example/AutofuzzCrashingSetterTarget.java"],
+)
+
+# Regression test for https://github.com/CodeIntelligenceTesting/jazzer/issues/586.
+java_fuzz_target_test(
+    name = "AutofuzzCrashingSetterFuzzer",
+    fuzzer_args = [
+        "--autofuzz=com.example.AutofuzzCrashingSetterTarget::start",
+        "--autofuzz_ignore=java.lang.NullPointerException",
+        "-runs=100000",
+    ],
+    runtime_deps = [
+        ":autofuzz_crashing_setter_target",
+    ],
+)
+
+java_library(
+    name = "autofuzz_assertion_error_target",
+    srcs = ["src/test/java/com/example/AutofuzzAssertionErrorTarget.java"],
+)
+
+# Regression test for https://github.com/CodeIntelligenceTesting/jazzer/issues/589.
+java_fuzz_target_test(
+    name = "AutofuzzAssertionError",
+    allowed_findings = ["java.lang.AssertionError"],
+    fuzzer_args = [
+        "--autofuzz=com.example.AutofuzzAssertionErrorTarget::autofuzz",
+    ],
+    runtime_deps = [
+        ":autofuzz_assertion_error_target",
+    ],
+)
+
+java_fuzz_target_test(
+    name = "SilencedFuzzer",
+    timeout = "short",
+    srcs = ["src/test/java/com/example/SilencedFuzzer.java"],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueHigh"],
+    target_class = "com.example.SilencedFuzzer",
+)
+
+java_binary(
+    name = "jacococli",
+    main_class = "org.jacoco.cli.internal.Main",
+    runtime_deps = ["@jacococli//file:jacococli.jar"],
+)
+
+java_library(
+    name = "OfflineInstrumentedTarget",
+    srcs = ["src/test/java/com/example/OfflineInstrumentedTarget.java"],
+)
+
+genrule(
+    name = "OfflineInstrumentedTargetInstrumented",
+    srcs = [":OfflineInstrumentedTarget"],
+    outs = ["OfflineInstrumentedTargetInstrumented.jar"],
+    cmd = """
+$(location :jacococli) instrument $< --dest jacoco-instrumented --quiet
+cp jacoco-instrumented/*.jar $@
+""",
+    tags = ["manual"],
+    tools = [":jacococli"],
+)
+
+java_fuzz_target_test(
+    name = "OfflineInstrumentedFuzzer",
+    timeout = "short",
+    srcs = ["src/test/java/com/example/OfflineInstrumentedFuzzer.java"],
+    allowed_findings = ["java.lang.IllegalStateException"],
+    target_class = "com.example.OfflineInstrumentedFuzzer",
+    deps = [
+        ":OfflineInstrumentedTargetInstrumented",
+        "@jacocoagent//file:jacocoagent.jar",  # Offline instrumented classes depend on the jacoco agent
+    ],
+)
+
+# TODO: Move to //examples eventually.
+java_fuzz_target_test(
+    name = "ExperimentalMutatorFuzzer",
+    srcs = ["src/test/java/com/example/ExperimentalMutatorFuzzer.java"],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueMedium"],
+    fuzzer_args = [
+        "--experimental_mutator",
+        "--instrumentation_includes=com.example.**",
+        "--custom_hook_includes=com.example.**",
+        # TODO: Investigate whether we can automatically exclude protos.
+        "--instrumentation_excludes=com.example.SimpleProto*",
+        "--custom_hook_excludes=com.example.SimpleProto*",
+        # Limit runs to catch regressions in mutator efficiency and speed up test runs.
+        "-runs=40000",
+    ],
+    target_class = "com.example.ExperimentalMutatorFuzzer",
+    verify_crash_reproducer = False,
+    deps = [
+        "//src/main/java/com/code_intelligence/jazzer/mutation/annotation",
+        "//tests/src/test/proto:simple_java_proto",
+    ],
+)
+
+java_fuzz_target_test(
+    name = "ExperimentalMutatorComplexProtoFuzzer",
+    srcs = ["src/test/java/com/example/ExperimentalMutatorComplexProtoFuzzer.java"],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueMedium"],
+    fuzzer_args = [
+        "--experimental_mutator",
+        "--instrumentation_includes=com.example.**",
+        "--custom_hook_includes=com.example.**",
+    ] + select({
+        # Limit runs to catch regressions in mutator efficiency and speed up test runs.
+        "@platforms//os:linux": ["-runs=400000"],
+        # TODO: Investigate why this test takes far more runs on macOS, with Windows also being
+        #       significantly worse than Linux.
+        "//conditions:default": ["-runs=1200000"],
+    }),
+    target_class = "com.example.ExperimentalMutatorComplexProtoFuzzer",
+    verify_crash_reproducer = False,
+    deps = [
+        "//src/main/java/com/code_intelligence/jazzer/mutation/annotation",
+        "//src/test/java/com/code_intelligence/jazzer/mutation/mutator/proto:proto2_java_proto",
+    ],
+)
+
+cc_binary(
+    name = "complex_proto_fuzzer",
+    testonly = True,
+    srcs = ["src/test/cc/complex_proto_fuzzer.cc"],
+    copts = ["-fsanitize=fuzzer"],
+    linkopts = ["-fsanitize=fuzzer"],
+    # libfuzzer not shipped on macOS.
+    target_compatible_with = LINUX_ONLY,
+    deps = [
+        "//src/test/java/com/code_intelligence/jazzer/mutation/mutator/proto:proto2_cc_proto",
+        "@libprotobuf-mutator",
+    ],
+)
+
+java_fuzz_target_test(
+    name = "ExperimentalMutatorDynamicProtoFuzzer",
+    srcs = ["src/test/java/com/example/ExperimentalMutatorDynamicProtoFuzzer.java"],
+    allowed_findings = ["com.code_intelligence.jazzer.api.FuzzerSecurityIssueMedium"],
+    fuzzer_args = [
+        "--experimental_mutator",
+        "--instrumentation_includes=com.example.**",
+        "--custom_hook_includes=com.example.**",
+    ] + select({
+        # Limit runs to catch regressions in mutator efficiency and speed up test runs.
+        "@platforms//os:linux": ["-runs=400000"],
+        # TODO: Investigate why this test takes far more runs on macOS, with Windows also being
+        #       significantly worse than Linux.
+        "//conditions:default": ["-runs=1200000"],
+    }),
+    target_class = "com.example.ExperimentalMutatorDynamicProtoFuzzer",
+    verify_crash_reproducer = False,
+    deps = [
+        "//src/main/java/com/code_intelligence/jazzer/mutation/annotation",
+        "//src/main/java/com/code_intelligence/jazzer/mutation/annotation/proto",
+        "@com_google_protobuf//java/core",
+    ],
+)
+
+sh_test(
+    name = "jazzer_from_path_test",
+    srcs = ["src/test/shell/jazzer_from_path_test.sh"],
+    args = ["$(rlocationpath //:jazzer_release)"],
+    data = [
+        "//:jazzer_release",
+        "@bazel_tools//tools/bash/runfiles",
+    ],
+)
+
+ktlint()

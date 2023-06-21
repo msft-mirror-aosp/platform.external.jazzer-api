@@ -35,6 +35,12 @@ object Deserialization {
     private val OBJECT_INPUT_STREAM_HEADER =
         ObjectStreamConstants.STREAM_MAGIC.toBytes() + ObjectStreamConstants.STREAM_VERSION.toBytes()
 
+    init {
+        require(OBJECT_INPUT_STREAM_HEADER.size <= 64) {
+            "Object input stream header must fit in a table of recent compares entry (64 bytes)"
+        }
+    }
+
     /**
      * Used to memoize the [InputStream] used to construct a given [ObjectInputStream].
      * [ThreadLocal] is required because the map is not synchronized (and likely cheaper than
@@ -57,11 +63,17 @@ object Deserialization {
         // We can't instantiate jaz.Zer directly, so we instantiate and serialize jaz.Ter and then
         // patch the class name.
         val baos = ByteArrayOutputStream()
-        ObjectOutputStream(baos).writeObject(jaz.Ter())
+        ObjectOutputStream(baos).writeObject(jaz.Ter(jaz.Ter.EXPRESSION_LANGUAGE_SANITIZER_ID))
         val serializedJazTerInstance = baos.toByteArray()
         val posToPatch = serializedJazTerInstance.indexOf("jaz.Ter".toByteArray())
         serializedJazTerInstance[posToPatch + "jaz.".length] = 'Z'.code.toByte()
         serializedJazTerInstance
+    }
+
+    init {
+        require(SERIALIZED_JAZ_ZER_INSTANCE.size <= 64) {
+            "Serialized jaz.Zer instance must fit in a table of recent compares entry (64 bytes)"
+        }
     }
 
     /**
@@ -71,15 +83,16 @@ object Deserialization {
         type = HookType.BEFORE,
         targetClassName = "java.io.ObjectInputStream",
         targetMethod = "<init>",
-        targetMethodDescriptor = "(Ljava/io/InputStream;)V"
+        targetMethodDescriptor = "(Ljava/io/InputStream;)V",
     )
     @JvmStatic
     fun objectInputStreamInitBeforeHook(method: MethodHandle?, alwaysNull: Any?, args: Array<Any?>, hookId: Int) {
         val originalInputStream = args[0] as? InputStream ?: return
-        val fixedInputStream = if (originalInputStream.markSupported())
+        val fixedInputStream = if (originalInputStream.markSupported()) {
             originalInputStream
-        else
+        } else {
             BufferedInputStream(originalInputStream)
+        }
         args[0] = fixedInputStream
         guideMarkableInputStreamTowardsEquality(fixedInputStream, OBJECT_INPUT_STREAM_HEADER, hookId)
     }
@@ -91,7 +104,7 @@ object Deserialization {
         type = HookType.AFTER,
         targetClassName = "java.io.ObjectInputStream",
         targetMethod = "<init>",
-        targetMethodDescriptor = "(Ljava/io/InputStream;)V"
+        targetMethodDescriptor = "(Ljava/io/InputStream;)V",
     )
     @JvmStatic
     fun objectInputStreamInitAfterHook(
@@ -115,17 +128,17 @@ object Deserialization {
         MethodHook(
             type = HookType.BEFORE,
             targetClassName = "java.io.ObjectInputStream",
-            targetMethod = "readObject"
+            targetMethod = "readObject",
         ),
         MethodHook(
             type = HookType.BEFORE,
             targetClassName = "java.io.ObjectInputStream",
-            targetMethod = "readObjectOverride"
+            targetMethod = "readObjectOverride",
         ),
         MethodHook(
             type = HookType.BEFORE,
             targetClassName = "java.io.ObjectInputStream",
-            targetMethod = "readUnshared"
+            targetMethod = "readUnshared",
         ),
     )
     @JvmStatic
@@ -138,31 +151,5 @@ object Deserialization {
         val inputStream = inputStreamForObjectInputStream.get()[objectInputStream]
         if (inputStream?.markSupported() != true) return
         guideMarkableInputStreamTowardsEquality(inputStream, SERIALIZED_JAZ_ZER_INSTANCE, hookId)
-    }
-
-    /**
-     * Calls [Object.finalize] early if the returned object is [jaz.Zer]. A call to finalize is
-     * guaranteed to happen at some point, but calling it early means that we can accurately report
-     * the input that lead to its execution.
-     */
-    @MethodHooks(
-        MethodHook(type = HookType.AFTER, targetClassName = "java.io.ObjectInputStream", targetMethod = "readObject"),
-        MethodHook(type = HookType.AFTER, targetClassName = "java.io.ObjectInputStream", targetMethod = "readObjectOverride"),
-        MethodHook(type = HookType.AFTER, targetClassName = "java.io.ObjectInputStream", targetMethod = "readUnshared"),
-    )
-    @JvmStatic
-    fun readObjectAfterHook(
-        method: MethodHandle?,
-        objectInputStream: ObjectInputStream?,
-        args: Array<Any?>,
-        hookId: Int,
-        deserializedObject: Any?,
-    ) {
-        if (deserializedObject?.javaClass?.name == HONEYPOT_CLASS_NAME) {
-            deserializedObject.javaClass.getDeclaredMethod("finalize").run {
-                isAccessible = true
-                invoke(deserializedObject)
-            }
-        }
     }
 }
