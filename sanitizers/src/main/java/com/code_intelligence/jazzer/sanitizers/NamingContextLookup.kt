@@ -49,14 +49,14 @@ object NamingContextLookup {
     )
     @JvmStatic
     fun lookupHook(method: MethodHandle?, thisObject: Any?, args: Array<Any?>, hookId: Int): Any {
-        val name = args[0] as String
+        val name = args[0] as? String ?: throw CommunicationException()
         if (name.startsWith(RMI_MARKER) || name.startsWith(LDAP_MARKER)) {
             Jazzer.reportFindingFromHook(
                 FuzzerSecurityIssueCritical(
                     """Remote JNDI Lookup
 JNDI lookups with attacker-controlled remote URLs can, depending on the JDK
-version, lead to remote code execution or the exfiltration of information."""
-                )
+version, lead to remote code execution or the exfiltration of information.""",
+                ),
             )
         }
         Jazzer.guideTowardsEquality(name, RMI_MARKER, hookId)

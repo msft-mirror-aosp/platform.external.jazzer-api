@@ -21,3 +21,16 @@ SKIP_ON_WINDOWS = select({
     "@platforms//os:windows": ["@platforms//:incompatible"],
     "//conditions:default": [],
 })
+
+LINUX_ONLY = select({
+    "@platforms//os:linux": [],
+    "//conditions:default": ["@platforms//:incompatible"],
+})
+
+MULTI_PLATFORM = select({
+    "@platforms//os:macos": [
+        "//bazel/platforms:macos_arm64",
+        "//bazel/platforms:macos_x86_64",
+    ],
+    "//conditions:default": [],
+})
