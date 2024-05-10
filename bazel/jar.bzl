@@ -21,6 +21,7 @@ def _strip_jar(ctx):
     args.add(ctx.file.jar)
     args.add(out_jar)
     args.add_all(ctx.attr.paths_to_strip)
+    args.add_all(ctx.attr.paths_to_keep, format_each = "+%s")
     ctx.actions.run(
         outputs = [out_jar],
         inputs = [ctx.file.jar],
@@ -31,8 +32,6 @@ def _strip_jar(ctx):
     return [
         DefaultInfo(
             files = depset([out_jar]),
-            # Workaround for https://github.com/bazelbuild/bazel/issues/15043.
-            runfiles = ctx.runfiles(files = [out_jar]),
         ),
         coverage_common.instrumented_files_info(
             ctx,
@@ -49,6 +48,7 @@ strip_jar = rule(
             allow_single_file = [".jar"],
         ),
         "paths_to_strip": attr.string_list(),
+        "paths_to_keep": attr.string_list(),
         "_jar_stripper": attr.label(
             default = "//bazel/tools/java:JarStripper",
             cfg = "exec",

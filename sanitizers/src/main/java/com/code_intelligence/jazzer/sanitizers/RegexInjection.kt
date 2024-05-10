@@ -23,6 +23,9 @@ import java.lang.invoke.MethodHandle
 import java.util.regex.Pattern
 import java.util.regex.PatternSyntaxException
 
+// message introduced in JDK14 and ported back to previous versions
+private const val STACK_OVERFLOW_ERROR_MESSAGE = "Stack overflow during pattern compilation"
+
 @Suppress("unused_parameter", "unused")
 object RegexInjection {
     /**
@@ -43,7 +46,7 @@ object RegexInjection {
         type = HookType.REPLACE,
         targetClassName = "java.util.regex.Pattern",
         targetMethod = "compile",
-        targetMethodDescriptor = "(Ljava/lang/String;I)Ljava/util/regex/Pattern;"
+        targetMethodDescriptor = "(Ljava/lang/String;I)Ljava/util/regex/Pattern;",
     )
     @JvmStatic
     fun compileWithFlagsHook(method: MethodHandle, alwaysNull: Any?, args: Array<Any?>, hookId: Int): Any? {
@@ -57,13 +60,13 @@ object RegexInjection {
             type = HookType.REPLACE,
             targetClassName = "java.util.regex.Pattern",
             targetMethod = "compile",
-            targetMethodDescriptor = "(Ljava/lang/String;)Ljava/util/regex/Pattern;"
+            targetMethodDescriptor = "(Ljava/lang/String;)Ljava/util/regex/Pattern;",
         ),
         MethodHook(
             type = HookType.REPLACE,
             targetClassName = "java.util.regex.Pattern",
             targetMethod = "matches",
-            targetMethodDescriptor = "(Ljava/lang/String;Ljava/lang/CharSequence;)Z"
+            targetMethodDescriptor = "(Ljava/lang/String;Ljava/lang/CharSequence;)Z",
         ),
     )
     @JvmStatic
@@ -113,7 +116,7 @@ object RegexInjection {
         pattern: String?,
         hasCanonEqFlag: Boolean,
         hookId: Int,
-        vararg args: Any?
+        vararg args: Any?,
     ): Any? {
         if (hasCanonEqFlag && pattern != null) {
             // With CANON_EQ enabled, Pattern.compile allocates an array with a size that is
@@ -128,8 +131,8 @@ object RegexInjection {
                         """Regular Expression Injection with CANON_EQ
 When java.util.regex.Pattern.compile is used with the Pattern.CANON_EQ flag,
 every injection into the regular expression pattern can cause arbitrarily large
-memory allocations, even when wrapped with Pattern.quote(...)."""
-                    )
+memory allocations, even when wrapped with Pattern.quote(...).""",
+                    ),
                 )
             } else {
                 Jazzer.guideTowardsContainment(pattern, CANON_EQ_ALMOST_EXPLOIT, hookId)
@@ -143,15 +146,15 @@ memory allocations, even when wrapped with Pattern.quote(...)."""
                 }
             }
         } catch (e: Exception) {
-            if (e is PatternSyntaxException) {
+            if (e is PatternSyntaxException && !(e.message ?: "").startsWith(STACK_OVERFLOW_ERROR_MESSAGE)) {
                 Jazzer.reportFindingFromHook(
                     FuzzerSecurityIssueLow(
                         """Regular Expression Injection
 Regular expression patterns that contain unescaped untrusted input can consume
 arbitrary amounts of CPU time. To properly escape the input, wrap it with
 Pattern.quote(...).""",
-                        e
-                    )
+                        e,
+                    ),
                 )
             }
             throw e

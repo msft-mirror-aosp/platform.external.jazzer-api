@@ -15,6 +15,7 @@
 _sanitizer_package_prefix = "com.code_intelligence.jazzer.sanitizers."
 
 _sanitizer_class_names = [
+    # keep sorted
     "Deserialization",
     "ExpressionLanguageInjection",
     "LdapInjection",
@@ -23,7 +24,10 @@ _sanitizer_class_names = [
     "ReflectiveCall",
     "RegexInjection",
     "RegexRoadblocks",
+    "ScriptEngineInjection",
+    "ServerSideRequestForgery",
     "SqlInjection",
+    "XPathInjection",
 ]
 
 SANITIZER_CLASSES = [_sanitizer_package_prefix + class_name for class_name in _sanitizer_class_names]
