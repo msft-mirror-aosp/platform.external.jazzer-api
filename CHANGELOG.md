@@ -2,13 +2,29 @@
 
 **Note:** Before version 1.0.0, every release may contain breaking changes.
 
+## Version 0.12.0
+
+* **Breaking change**: Autofuzz API methods (`consume` and `autofuzz`) have moved from the
+  `Jazzer` class to the dedicated `Autofuzz` class
+* **Major feature**: Added JUnit 5 integration for fuzzing and regression tests using the
+  `@FuzzTest` annotation (available as `com.code-intelligence:jazzer-junit`)
+* Feature: Added sanitizer for SQL injections
+* Feature: Hooks can be selectively disabled by specifying their full class name using the new
+  `--disabled_hooks` flag
+* Fix: Remove memory leaks in native code
+* Fix: Don't instrument internal Azul JDK classes
+* Fix: Classes with local variable annotations are now instrumented without errors
+
+This release also includes smaller improvements and bugfixes, as well as a major refactoring and
+Java rewrite of native components.
+
 ## Version 0.11.0
 
 * Feature: Add sanitizer for context lookups
 * Feature: Add sanitizer for OS command injection
 * Feature: Add sanitizer for regex injection
 * Feature: Add sanitizer for LDAP injections
-* Feature: Add sanitizer for arbitrary class loading 
+* Feature: Add sanitizer for arbitrary class loading
 * Feature: Guide fuzzer to generate proper map lookups keys
 * Feature: Generate standalone Java reproducers for autofuzz
 * Feature: Hooks targeting interfaces and abstract classes hook all implementations
@@ -28,7 +44,7 @@ This release also includes smaller improvements and bugfixes.
 ## Version 0.10.0
 
 * **Breaking change**: Use OS-specific classpath separator to split jvm_args
-* Feature: Add support to "autofuzz" targets without the need to manually write fuzz targets 
+* Feature: Add support to "autofuzz" targets without the need to manually write fuzz targets
 * Feature: Add macOS and Windows support
 * Feature: Add option to generate coverage report
 * Feature: Support multiple hook annotations per hook method
@@ -46,7 +62,7 @@ This release also includes smaller improvements and bugfixes.
 * Fixed: Make initialized `this` object available to `<init>` AFTER hooks
 * Fixed: Allow instrumented classes loaded by custom class loaders to find Jazzer internals
 
-This release also includes smaller improvements and bugfixes. 
+This release also includes smaller improvements and bugfixes.
 
 ## Version 0.9.1
 
@@ -56,7 +72,7 @@ This release also includes smaller improvements and bugfixes.
 * Feature: `assert` can be used in fuzz targets
 * Feature: Coverage is now collision-free and more fine-grained (based on [JaCoCo](https://www.eclemma.org/jacoco/))
 * API: Added `pickValue(Collection c)` and `consumeChar(char min, char max)` to `FuzzedDataProvider`
-* API: Added `FuzzerSecurityIssue*` exceptions to allow specifiying the severity of findings
+* API: Added `FuzzerSecurityIssue*` exceptions to allow specifying the severity of findings
 
 ## Version 0.9.0
 
